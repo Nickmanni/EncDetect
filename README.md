@@ -72,3 +72,7 @@ internal/gui        Server, Windows-Dialoge, Web-Oberfläche
 ## Hinweise
 
 „Vermutlich verschlüsselt“ ist eine statistische Aussage: Mit Zufallsdaten überschriebene oder stark komprimierte Bereiche sehen ähnlich aus. Das Tool knackt keine Passwörter und umgeht keine Verschlüsselung; es liest nur Metadaten (und nutzt bei BitLocker-Clear-Key den ungeschützt abgelegten Schlüssel zur Gegenprüfung).
+
+## Lizenz
+
+[MIT](LICENSE) – freie Nutzung, Veränderung und Weitergabe (auch kommerziell), solange der Copyright-Hinweis erhalten bleibt. Ohne Gewährleistung.
