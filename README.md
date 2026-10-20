@@ -28,7 +28,7 @@ Nicht unterstützt: Ex01, VMDK, VHDX, AFF – vorher in E01 oder dd umwandeln.
 
 ## Verwendung
 
-**Oberfläche:** `EncDetect.exe` starten und ein Image auswählen – oder das Image per Drag & Drop auf die EXE ziehen. Bericht als HTML, Text oder JSON speichern. Benötigt Windows 10/11 (WebView2); ohne WebView2 öffnet sich die Oberfläche im Standardbrowser.
+**Oberfläche:** `EncDetect.exe` starten und ein Image auswählen oder **per Drag & Drop in das Fenster ziehen** (bei mehrteiligen E01 alle Segmente E01, E02, … gemeinsam markieren). Alternativ das Image auf die EXE ziehen. Bericht als HTML, Text oder JSON speichern. Benötigt Windows 10/11 (WebView2); ohne WebView2 öffnet sich die Oberfläche im Standardbrowser.
 
 **Kommandozeile:**
 

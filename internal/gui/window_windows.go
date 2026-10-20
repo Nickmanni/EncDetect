@@ -69,8 +69,8 @@ func utf16z(s string) []uint16 {
 }
 
 type winDialogs struct {
-	w        webview2.WebView
-	lastDir  string
+	w       webview2.WebView
+	lastDir string
 }
 
 // call führt f auf dem UI-Thread aus und wartet auf das Ergebnis.

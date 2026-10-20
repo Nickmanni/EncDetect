@@ -96,7 +96,7 @@ function renderRecent() {
 
 /* ---------- Start ---------- */
 $("browseBtn").onclick = async () => {
-  if (!info.nativeDialogs) { $("pathInput").focus(); toast("Bitte den Pfad zum Image eingeben."); return; }
+  if (!info.nativeDialogs) { $("fileInput").click(); return; }
   const r = await api("/api/browse", { method: "POST" });
   if (r.error) { showStartError(r.error); return; }
   if (r.path) { $("pathInput").value = r.path; startAnalysis(); }
@@ -106,11 +106,69 @@ $("pathInput").addEventListener("keydown", (e) => { if (e.key === "Enter") start
 $("newBtn").onclick = () => { renderRecent(); show("viewStart"); };
 $("cancelBtn").onclick = () => api("/api/cancel", { method: "POST" });
 
-// Drag & Drop in das Fenster liefert keinen Dateipfad – Navigation verhindern.
-["dragover", "drop"].forEach((ev) => window.addEventListener(ev, (e) => {
+/* ---------- Drag & Drop / Dateiauswahl im Browser ----------
+   Die Seite kennt bei abgelegten Dateien keinen Pfad. Der Dienst fordert
+   deshalb die benötigten Bereiche an, die Seite liest sie per File.slice(). */
+let dragDepth = 0;
+const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+window.addEventListener("dragenter", (e) => {
+  if (!hasFiles(e)) return;
   e.preventDefault();
-  if (ev === "drop") toast("Bitte „Image auswählen …“ verwenden oder das Image direkt auf EncDetect.exe ziehen.", 5000);
-}));
+  dragDepth++;
+  if (!$("viewProgress").hidden) return;
+  $("dropOverlay").hidden = false;
+});
+window.addEventListener("dragover", (e) => { e.preventDefault(); });
+window.addEventListener("dragleave", (e) => {
+  if (!hasFiles(e)) return;
+  if (--dragDepth <= 0) { dragDepth = 0; $("dropOverlay").hidden = true; }
+});
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  $("dropOverlay").hidden = true;
+  if (!$("viewProgress").hidden) { toast("Bitte warten, bis die laufende Analyse fertig ist."); return; }
+  const files = [...(e.dataTransfer?.files || [])].filter((f) => f.size > 0 || f.type !== "");
+  if (files.length) analyzeFiles(files);
+  else toast("Ordner werden nicht unterstützt – bitte die Image-Datei(en) selbst hineinziehen.", 5000);
+});
+$("fileInput").addEventListener("change", () => {
+  const files = [...$("fileInput").files];
+  $("fileInput").value = "";
+  if (files.length) analyzeFiles(files);
+});
+
+let bridgeFiles = null;
+
+async function analyzeFiles(files) {
+  showStartError("");
+  bridgeFiles = new Map(files.map((f) => [f.name, f]));
+  const r = await api("/api/drop", {
+    method: "POST",
+    body: JSON.stringify({ files: files.map((f) => ({ name: f.name, size: f.size })) }),
+  });
+  if (r.error) { show("viewStart"); showStartError(r.error); return; }
+  const extra = files.length > 1 ? ` (+ ${files.length - 1} weitere Datei${files.length > 2 ? "en" : ""})` : "";
+  $("progressFile").textContent = r.primary + extra;
+  $("progressMsg").textContent = "Image wird geöffnet …";
+  $("progressBar").style.width = "2%";
+  show("viewProgress");
+  bridgeLoop(bridgeFiles, r.session);
+  poll(null);
+}
+
+async function bridgeLoop(files, session) {
+  while (bridgeFiles === files) {
+    let r;
+    try { r = await api(`/api/bridge/next?s=${session}`); } catch (e) { await new Promise((ok) => setTimeout(ok, 300)); continue; }
+    if (r.done) return;
+    for (const q of r.requests || []) {
+      const f = files.get(q.name);
+      const buf = f ? await f.slice(q.off, q.off + q.len).arrayBuffer() : new ArrayBuffer(0);
+      await fetch(`/api/bridge/data?s=${session}&id=${q.id}`, { method: "POST", headers: { "X-Token": token }, body: buf });
+    }
+  }
+}
 
 function showStartError(msg) {
   const e = $("startError");
@@ -122,6 +180,7 @@ async function startAnalysis() {
   const path = $("pathInput").value.trim().replace(/^"+|"+$/g, "");
   showStartError("");
   if (!path) { showStartError("Bitte zuerst ein Image auswählen."); return; }
+  bridgeFiles = null;
   const r = await api("/api/analyze", { method: "POST", body: JSON.stringify({ path }) });
   if (r.error) { showStartError(r.error); show("viewStart"); return; }
   $("progressFile").textContent = path;
@@ -141,7 +200,7 @@ function poll(path) {
     $("progressBar").style.width = Math.max(2, Math.round((s.progress || 0) * 100)) + "%";
     if (s.running || !s.report) { poll(path); return; }
     currentReport = s.report;
-    saveRecent(path, s.report.overall);
+    if (path) saveRecent(path, s.report.overall);
     renderReport(s.report);
     show("viewResult");
   }, 150);
@@ -275,9 +334,6 @@ document.querySelectorAll("[data-export]").forEach((b) => {
     return;
   }
   $("version").textContent = "Version " + info.version;
-  if (!info.nativeDialogs) {
-    $("browseBtn").querySelector(".drop-main").textContent = "Pfad zum Image unten eingeben";
-  }
   renderRecent();
   if (info.initialPath) {
     $("pathInput").value = info.initialPath;

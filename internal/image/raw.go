@@ -3,13 +3,13 @@ package image
 import (
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"sort"
 )
 
 type rawSeg struct {
-	f     *os.File
+	f     File
+	name  string
 	start int64
 	size  int64
 }
@@ -21,28 +21,17 @@ type rawImage struct {
 	size int64
 }
 
-func openRaw(path string) (Image, error) {
-	paths := splitRawSegments(path)
+func openRaw(fsys FS, path string) (Image, error) {
+	paths := splitRawSegments(fsys, path)
 	r := &rawImage{}
 	for _, p := range paths {
-		f, err := os.Open(p)
+		f, err := fsys.Open(p)
 		if err != nil {
 			r.Close()
 			return nil, err
 		}
-		st, err := f.Stat()
-		if err != nil {
-			f.Close()
-			r.Close()
-			return nil, err
-		}
-		if st.IsDir() {
-			f.Close()
-			r.Close()
-			return nil, fmt.Errorf("%s ist ein Verzeichnis", p)
-		}
-		r.segs = append(r.segs, rawSeg{f: f, start: r.size, size: st.Size()})
-		r.size += st.Size()
+		r.segs = append(r.segs, rawSeg{f: f, name: p, start: r.size, size: f.Size()})
+		r.size += f.Size()
 	}
 	return r, nil
 }
@@ -89,7 +78,7 @@ func (r *rawImage) Meta() []KV {
 	if len(r.segs) == 0 {
 		return nil
 	}
-	return []KV{{"Datei", filepath.Base(r.segs[0].f.Name())}}
+	return []KV{{"Datei", filepath.Base(r.segs[0].name)}}
 }
 
 func (r *rawImage) Close() error {

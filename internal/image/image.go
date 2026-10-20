@@ -5,7 +5,6 @@ package image
 import (
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -29,20 +28,23 @@ type KV struct {
 }
 
 // Open erkennt das Format anhand der Signatur (nicht nur der Endung) und öffnet
-// das Image.
-func Open(path string) (Image, error) {
-	f, err := os.Open(path)
+// das Image aus dem normalen Dateisystem.
+func Open(path string) (Image, error) { return OpenFS(OSFS{}, path) }
+
+// OpenFS öffnet ein Image aus einem beliebigen Dateisystem.
+func OpenFS(fsys FS, path string) (Image, error) {
+	f, err := fsys.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	sig := make([]byte, 8)
-	n, _ := io.ReadFull(f, sig)
+	n, _ := f.ReadAt(sig, 0)
 	f.Close()
 	sig = sig[:n]
 
 	switch {
 	case n == 8 && string(sig) == "EVF\x09\x0d\x0a\xff\x00":
-		return openEWF(path)
+		return openEWF(fsys, path)
 	case n == 8 && string(sig) == "EVF2\x0d\x0a\x81\x00":
 		return nil, fmt.Errorf("Ex01 (EWF2-Format) wird nicht unterstützt – bitte mit FTK Imager oder ewfexport in E01 oder dd umwandeln. Ex01-Images können zusätzlich selbst verschlüsselt sein (EnCase-Containerverschlüsselung)")
 	case n == 8 && string(sig) == "LVF\x09\x0d\x0a\xff\x00":
@@ -52,19 +54,19 @@ func Open(path string) (Image, error) {
 	case n >= 8 && string(sig[:8]) == "vhdxfile":
 		return nil, fmt.Errorf("VHDX wird nicht unterstützt – bitte in RAW umwandeln (z. B. qemu-img convert -O raw)")
 	}
-	return openRaw(path)
+	return openRaw(fsys, path)
 }
 
 // SegmentFiles liefert die Liste der Teil-Dateien eines gesplitteten Images
 // (z. B. image.001, image.002, …). Für ein einzelnes Image nur den Pfad selbst.
-func splitRawSegments(path string) []string {
+func splitRawSegments(fsys FS, path string) []string {
 	ext := filepath.Ext(path)
 	if len(ext) == 4 && isDigits(ext[1:]) && ext == ".001" {
 		base := strings.TrimSuffix(path, ext)
 		var out []string
 		for i := 1; i < 10000; i++ {
 			p := fmt.Sprintf("%s.%03d", base, i)
-			if _, err := os.Stat(p); err != nil {
+			if !fsys.Exists(p) {
 				break
 			}
 			out = append(out, p)

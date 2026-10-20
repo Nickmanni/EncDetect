@@ -302,3 +302,17 @@ main { max-width: 1180px; margin: 0 auto; padding: 28px 28px 60px; }
   .vol-body { padding-left: 22px; }
   .path-row { flex-direction: column; }
 }
+
+/* Drag & Drop */
+.dropzone {
+  position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(4px);
+}
+.dropzone[hidden] { display: none; }
+.dropzone-inner {
+  pointer-events: none; text-align: center; padding: 48px 70px; border-radius: 24px;
+  border: 3px dashed var(--accent); background: var(--card); box-shadow: var(--shadow);
+}
+.dropzone-inner svg { width: 56px; height: 56px; color: var(--accent); }
+.dz-title { font-size: 24px; font-weight: 700; margin-top: 8px; }
+.dz-sub { color: var(--muted); margin-top: 4px; }

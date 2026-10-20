@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -34,7 +33,7 @@ type ewfChunk struct {
 }
 
 type ewfImage struct {
-	files     []*os.File
+	files     []File
 	chunks    []ewfChunk
 	chunkSize int64
 	size      int64
@@ -73,7 +72,7 @@ func ewfSegmentName(first string, n int) string {
 	return fmt.Sprintf("%s.%c%c%c", base, c1, c2, c3)
 }
 
-func openEWF(path string) (Image, error) {
+func openEWF(fsys FS, path string) (Image, error) {
 	img := &ewfImage{cache: map[int][]byte{}}
 	var sectorsPerChunk, bytesPerSector uint32
 	var sectorCount uint64
@@ -82,17 +81,17 @@ func openEWF(path string) (Image, error) {
 
 	for segNo := 1; ; segNo++ {
 		p := ewfSegmentName(path, segNo)
-		f, err := os.Open(p)
+		f, err := fsys.Open(p)
 		if err != nil {
 			if segNo == 1 {
 				return nil, err
 			}
-			break
+			img.Close()
+			return nil, fmt.Errorf("Segment %s fehlt (mehrteiliges E01). Bitte alle Segmente (%s, %s, …) im selben Ordner bereitstellen bzw. gemeinsam in das Fenster ziehen", filepath.Base(p), filepath.Base(ewfSegmentName(path, 1)), filepath.Base(ewfSegmentName(path, 2)))
 		}
 		img.files = append(img.files, f)
 		segIdx := len(img.files) - 1
-		st, _ := f.Stat()
-		fsize := st.Size()
+		fsize := f.Size()
 
 		hdr := make([]byte, 13)
 		if _, err := f.ReadAt(hdr, 0); err != nil {
@@ -186,7 +185,7 @@ func openEWF(path string) (Image, error) {
 		}
 		// table2 wird nur genutzt, wenn table fehlt – ansonsten doppelte Chunks
 		// vermeiden: ewfParseTable wird für table2 nur ohne table aufgerufen.
-		if done {
+		if done || !next {
 			break
 		}
 	}
@@ -213,7 +212,7 @@ func openEWF(path string) (Image, error) {
 	return img, nil
 }
 
-func ewfParseTable(f *os.File, dataOff, dataSize, sectionStart, sectorsStart, sectorsEnd int64, seg int) ([]ewfChunk, error) {
+func ewfParseTable(f File, dataOff, dataSize, sectionStart, sectorsStart, sectorsEnd int64, seg int) ([]ewfChunk, error) {
 	if dataSize < 24 {
 		return nil, fmt.Errorf("Tabellen-Sektion zu klein")
 	}

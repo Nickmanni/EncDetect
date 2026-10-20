@@ -48,7 +48,8 @@
         <button class="btn primary" id="analyzeBtn" type="button">Analysieren</button>
       </div>
       <div class="error" id="startError" hidden></div>
-      <div class="hint">Tipp: Ein Image auf <b>EncDetect.exe</b> ziehen startet die Analyse direkt.</div>
+      <div class="hint">Tipp: Image einfach in dieses Fenster ziehen – bei mehrteiligen E01 alle Segmente (E01, E02, …) zusammen markieren.</div>
+      <input type="file" id="fileInput" multiple hidden>
     </div>
 
     <div class="recent" id="recentBox" hidden>
@@ -109,6 +110,13 @@
   </section>
 </main>
 
+<div class="dropzone" id="dropOverlay" hidden>
+  <div class="dropzone-inner">
+    <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 19h14"/></svg>
+    <div class="dz-title">Image hier ablegen</div>
+    <div class="dz-sub">E01 (alle Segmente gemeinsam), dd, raw, img, .001 …</div>
+  </div>
+</div>
 <div class="toast" id="toast" hidden></div>
 <script src="app.js"></script>
 </body>

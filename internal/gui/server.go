@@ -10,11 +10,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +38,7 @@ type job struct {
 	rep      *detect.Report
 	cancel   context.CancelFunc
 	finished time.Time
+	bridge   *bridge
 }
 
 // Server ist der lokale API-Server der Oberfläche.
@@ -93,6 +97,9 @@ func (s *Server) Serve() error {
 	api("/api/browse", s.handleBrowse)
 	api("/api/analyze", s.handleAnalyze)
 	api("/api/status", s.handleStatus)
+	api("/api/drop", s.handleDrop)
+	api("/api/bridge/next", s.handleBridgeNext)
+	api("/api/bridge/data", s.handleBridgeData)
 	api("/api/cancel", s.handleCancel)
 	api("/api/export", s.handleExport)
 	api("/api/download", s.handleDownload)
@@ -154,18 +161,32 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := s.startJob(image.OSFS{}, path, nil); err != nil {
+		writeJSON(w, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+// startJob startet die Analyse im Hintergrund. br ist bei Drag & Drop gesetzt.
+func (s *Server) startJob(fsys image.FS, path string, br *bridge) error {
 	s.jobMu.Lock()
 	if s.job.running {
 		s.jobMu.Unlock()
-		writeJSON(w, map[string]any{"error": "Es läuft bereits eine Analyse."})
-		return
+		return fmt.Errorf("Es läuft bereits eine Analyse.")
+	}
+	if s.job.bridge != nil {
+		s.job.bridge.Close()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s.job = job{running: true, msg: "Image wird geöffnet …", cancel: cancel}
+	s.job = job{running: true, msg: "Image wird geöffnet …", cancel: cancel, bridge: br}
 	s.jobMu.Unlock()
 
 	go func() {
 		defer func() {
+			if br != nil {
+				br.Close()
+			}
 			if rec := recover(); rec != nil {
 				s.jobMu.Lock()
 				s.job.err = fmt.Sprintf("Interner Fehler: %v", rec)
@@ -173,7 +194,7 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 				s.jobMu.Unlock()
 			}
 		}()
-		img, err := image.Open(path)
+		img, err := image.OpenFS(fsys, path)
 		if err != nil {
 			s.jobMu.Lock()
 			s.job.err = err.Error()
@@ -187,6 +208,9 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 			s.job.frac, s.job.msg = f, m
 			s.jobMu.Unlock()
 		})
+		if br != nil {
+			rep.Path = path + " (per Drag & Drop geladen)"
+		}
 		s.jobMu.Lock()
 		s.job.rep = rep
 		s.job.running = false
@@ -194,6 +218,104 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		s.job.finished = time.Now()
 		s.jobMu.Unlock()
 	}()
+	return nil
+}
+
+// handleDrop startet die Analyse für Dateien, die in das Fenster gezogen
+// wurden. Die Daten liest die Seite auf Anforderung (siehe bridge.go).
+func (s *Server) handleDrop(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Files []struct {
+			Name string `json:"name"`
+			Size int64  `json:"size"`
+		} `json:"files"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Files) == 0 {
+		writeJSON(w, map[string]any{"error": "Keine Datei erhalten."})
+		return
+	}
+	files := map[string]int64{}
+	var names []string
+	for _, f := range req.Files {
+		files[f.Name] = f.Size
+		names = append(names, f.Name)
+	}
+	primary := pickPrimary(names, files)
+	if primary == "" {
+		writeJSON(w, map[string]any{"error": "Keine Image-Datei gefunden."})
+		return
+	}
+	br := newBridge(files)
+	if err := s.startJob(br, primary, br); err != nil {
+		br.Close()
+		writeJSON(w, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "primary": primary, "session": br.id})
+}
+
+// pickPrimary wählt aus mehreren Dateien das zu öffnende Image: das erste
+// E01-Segment, sonst das erste Teil eines gesplitteten Images, sonst die
+// größte Datei.
+func pickPrimary(names []string, sizes map[string]int64) string {
+	sort.Strings(names)
+	for _, n := range names {
+		if strings.EqualFold(filepath.Ext(n), ".e01") {
+			return n
+		}
+	}
+	for _, n := range names {
+		if filepath.Ext(n) == ".001" {
+			return n
+		}
+	}
+	best := ""
+	for _, n := range names {
+		if best == "" || sizes[n] > sizes[best] {
+			best = n
+		}
+	}
+	return best
+}
+
+// currentBridge liefert die Brücke der laufenden Drag-&-Drop-Sitzung, sofern
+// die Anfrage zu ihr gehört.
+func (s *Server) currentBridge(r *http.Request) *bridge {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+	if s.job.bridge == nil || r.URL.Query().Get("s") != s.job.bridge.id {
+		return nil
+	}
+	return s.job.bridge
+}
+
+// handleBridgeNext liefert offene Leseanfragen an die Seite (Long-Polling).
+func (s *Server) handleBridgeNext(w http.ResponseWriter, r *http.Request) {
+	br := s.currentBridge(r)
+	if br == nil {
+		writeJSON(w, map[string]any{"done": true})
+		return
+	}
+	reqs, closed := br.next(20 * time.Second)
+	if closed {
+		writeJSON(w, map[string]any{"done": true})
+		return
+	}
+	if reqs == nil {
+		reqs = []*bridgeReq{}
+	}
+	writeJSON(w, map[string]any{"requests": reqs})
+}
+
+// handleBridgeData nimmt die von der Seite gelesenen Bytes entgegen.
+func (s *Server) handleBridgeData(w http.ResponseWriter, r *http.Request) {
+	br := s.currentBridge(r)
+	id, _ := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+	data, err := io.ReadAll(io.LimitReader(r.Body, bridgeBlock+1))
+	if br == nil || err != nil || !br.deliver(id, data) {
+		writeJSON(w, map[string]any{"ok": false})
+		return
+	}
 	writeJSON(w, map[string]any{"ok": true})
 }
 

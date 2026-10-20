@@ -23,11 +23,11 @@ var funcs = template.FuncMap{
 		}
 		return b.String()
 	},
-	"date": func(t time.Time) string { return t.Local().Format("02.01.2006 15:04:05") },
-	"pct":  func(f float64) string { return fmt.Sprintf("%.0f", f*100) },
-	"f3":   func(f float64) string { return strings.Replace(fmt.Sprintf("%.3f", f), ".", ",", 1) },
+	"date":  func(t time.Time) string { return t.Local().Format("02.01.2006 15:04:05") },
+	"pct":   func(f float64) string { return fmt.Sprintf("%.0f", f*100) },
+	"f3":    func(f float64) string { return strings.Replace(fmt.Sprintf("%.3f", f), ".", ",", 1) },
 	"label": func(s detect.Status) string { return s.Label() },
-	"sub":  func(a, b int) int { return a - b },
+	"sub":   func(a, b int) int { return a - b },
 }
 
 var tpl = template.Must(template.New("r").Funcs(funcs).Parse(`<!doctype html>
