@@ -57,16 +57,19 @@ function toast(msg, ms = 3500) {
 }
 
 /* ---------- Theme ---------- */
+const MOON = '<svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>';
+const SUN = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
 function applyTheme(t) {
-  if (t) document.documentElement.dataset.theme = t;
-  else delete document.documentElement.dataset.theme;
+  document.documentElement.dataset.theme = t;
+  $("themeBtn").innerHTML = t === "dark" ? SUN : MOON;
+  $("themeBtn").title = t === "dark" ? "Hellen Modus einschalten" : "Dunkelmodus einschalten";
 }
-try { applyTheme(localStorage.getItem("theme")); } catch (e) {}
+// Standard ist der Dunkelmodus; eine eigene Wahl wird gemerkt.
+let savedTheme = null;
+try { savedTheme = localStorage.getItem("theme"); } catch (e) {}
+applyTheme(savedTheme || "dark");
 $("themeBtn").onclick = () => {
-  const dark = document.documentElement.dataset.theme
-    ? document.documentElement.dataset.theme === "dark"
-    : matchMedia("(prefers-color-scheme: dark)").matches;
-  const next = dark ? "light" : "dark";
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   applyTheme(next);
   try { localStorage.setItem("theme", next); } catch (e) {}
 };
@@ -97,8 +100,13 @@ function renderRecent() {
 /* ---------- Start ---------- */
 $("browseBtn").onclick = async () => {
   if (!info.nativeDialogs) { $("fileInput").click(); return; }
-  const r = await api("/api/browse", { method: "POST" });
-  if (r.error) { showStartError(r.error); return; }
+  let r;
+  try { r = await api("/api/browse", { method: "POST" }); } catch (e) { r = { error: String(e) }; }
+  if (r.error) {
+    // Rückfall: Dateidialog von WebView2/Browser (ebenfalls ein Explorer-Fenster)
+    $("fileInput").click();
+    return;
+  }
   if (r.path) { $("pathInput").value = r.path; startAnalysis(); }
 };
 $("analyzeBtn").onclick = () => startAnalysis();

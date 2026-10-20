@@ -3,11 +3,12 @@
 package gui
 
 import (
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"fmt"
 	"runtime"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -24,6 +25,11 @@ var (
 	procSetProcessDPI    = user32.NewProc("SetProcessDPIAware")
 	shcore               = syscall.NewLazyDLL("shcore.dll")
 	procSetDPIAwareness  = shcore.NewProc("SetProcessDpiAwareness")
+	ole32                = syscall.NewLazyDLL("ole32.dll")
+	procCoInitializeEx   = ole32.NewProc("CoInitializeEx")
+	procCoUninitialize   = ole32.NewProc("CoUninitialize")
+	dwmapi               = syscall.NewLazyDLL("dwmapi.dll")
+	procDwmSetAttribute  = dwmapi.NewProc("DwmSetWindowAttribute")
 )
 
 type openFileNameW struct {
@@ -70,20 +76,31 @@ func utf16z(s string) []uint16 {
 
 type winDialogs struct {
 	w       webview2.WebView
+	mu      sync.Mutex // nur ein Dialog gleichzeitig
 	lastDir string
 }
 
-// call führt f auf dem UI-Thread aus und wartet auf das Ergebnis.
+// call führt f in einem eigenen, festen Betriebssystem-Thread mit eigener
+// COM-Initialisierung (STA) aus. Das ist unabhängig von der Nachrichtenschleife
+// des WebView2-Fensters; der Dialog ist trotzdem modal zum Hauptfenster.
 func (d *winDialogs) call(f func()) {
 	done := make(chan struct{})
-	d.w.Dispatch(func() {
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		hr, _, _ := procCoInitializeEx.Call(0, 0x2|0x4) // APARTMENTTHREADED | DISABLE_OLE1DDE
+		if int32(hr) >= 0 {
+			defer procCoUninitialize.Call()
+		}
 		f()
 		close(done)
-	})
+	}()
 	<-done
 }
 
 func (d *winDialogs) run(save bool, title, filter, defName, defExt string) (string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	buf := make([]uint16, 32768)
 	if defName != "" {
 		copy(buf, utf16z(defName))
@@ -114,16 +131,20 @@ func (d *winDialogs) run(save bool, title, filter, defName, defExt string) (stri
 	} else {
 		ofn.flags |= ofnFileMustExist
 	}
-	var ok uintptr
+	var ok, code uintptr
 	d.call(func() {
 		ofn.hwndOwner = uintptr(d.w.Window())
 		ok, _, _ = proc.Call(uintptr(unsafe.Pointer(&ofn)))
+		if ok == 0 {
+			// CommDlgExtendedError gilt nur für den aufrufenden Thread
+			code, _, _ = procCommDlgError.Call()
+		}
 	})
 	runtime.KeepAlive(filt)
 	runtime.KeepAlive(t)
 	if ok == 0 {
-		if code, _, _ := procCommDlgError.Call(); code != 0 {
-			return "", errors.New("Dateidialog konnte nicht geöffnet werden")
+		if code != 0 {
+			return "", fmt.Errorf("Dateidialog konnte nicht geöffnet werden (Fehler 0x%x)", code)
 		}
 		return "", nil // abgebrochen
 	}
@@ -171,6 +192,9 @@ func Run(s *Server) {
 		return
 	}
 	defer w.Destroy()
+	// dunkle Titelleiste (Windows 10 20H1+ / 11)
+	dark := int32(1)
+	procDwmSetAttribute.Call(uintptr(w.Window()), 20, uintptr(unsafe.Pointer(&dark)), 4)
 	s.Dialogs = &winDialogs{w: w}
 	w.SetSize(1040, 680, webview2.HintMin)
 	go s.Serve()

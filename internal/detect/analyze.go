@@ -12,7 +12,7 @@ import (
 	"encdetect/internal/image"
 )
 
-const Version = "1.0.0"
+const Version = "1.0.1"
 
 // Analyze untersucht ein geöffnetes Image vollständig.
 func Analyze(ctx context.Context, img image.Image, path string, prog Progress) *Report {

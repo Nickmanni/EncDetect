@@ -14,7 +14,7 @@
       "0409": {
         "identity": {
           "name": "EncDetect",
-          "version": "1.0.0.0"
+          "version": "1.0.1.0"
         },
         "description": "EncDetect",
         "minimum-os": "win10",
@@ -38,17 +38,17 @@
     "#1": {
       "0000": {
         "fixed": {
-          "file_version": "1.0.0.0",
-          "product_version": "1.0.0.0"
+          "file_version": "1.0.1.0",
+          "product_version": "1.0.1.0"
         },
         "info": {
           "0407": {
             "FileDescription": "EncDetect – Verschlüsselungsanalyse für forensische Images",
-            "FileVersion": "1.0.0",
+            "FileVersion": "1.0.1",
             "InternalName": "EncDetect",
             "OriginalFilename": "EncDetect.exe",
             "ProductName": "EncDetect",
-            "ProductVersion": "1.0.0",
+            "ProductVersion": "1.0.1",
             "LegalCopyright": "© 2026 Nickmanni – MIT-Lizenz",
             "CompanyName": ""
           }
