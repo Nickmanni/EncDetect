@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EncDetect</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 48 48" aria-hidden="true">
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5b8cff"/><stop offset="1" stop-color="#7c4dff"/></linearGradient></defs>
+      <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#lg)"/>
+      <rect x="14" y="21" width="20" height="15" rx="3" fill="#fff"/>
+      <path d="M18 21v-4a6 6 0 0 1 12 0v4" fill="none" stroke="#fff" stroke-width="3"/>
+      <circle cx="24" cy="28" r="2.2" fill="#5b6cff"/><rect x="23" y="29" width="2" height="4" rx="1" fill="#5b6cff"/>
+    </svg>
+    <div>
+      <div class="title">EncDetect</div>
+      <div class="subtitle">Verschlüsselungsanalyse für forensische Images</div>
+    </div>
+  </div>
+  <div class="top-actions">
+    <span class="version" id="version"></span>
+    <button class="icon-btn" id="themeBtn" title="Hell/Dunkel umschalten" aria-label="Hell/Dunkel umschalten">
+      <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <!-- Start -->
+  <section id="viewStart" class="view">
+    <div class="hero">
+      <h1>Ist das Image verschlüsselt – und womit?</h1>
+      <p>E01- oder dd-Image auswählen. EncDetect untersucht Partitionstabelle und Volumes und bestimmt das Verschlüsselungsverfahren. Das Image wird dabei nur gelesen, nie verändert.</p>
+    </div>
+
+    <div class="pick card" id="pickCard">
+      <button class="drop" id="browseBtn" type="button">
+        <svg viewBox="0 0 24 24" class="drop-icon"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>
+        <span class="drop-main">Image auswählen …</span>
+        <span class="drop-sub">E01 (auch mehrteilig) · dd / raw / img · gesplittet .001 · dmg (unkomprimiert)</span>
+      </button>
+      <div class="path-row">
+        <input id="pathInput" type="text" spellcheck="false" placeholder="oder Pfad einfügen, z. B. D:\Fall 123\Asservat01.E01">
+        <button class="btn primary" id="analyzeBtn" type="button">Analysieren</button>
+      </div>
+      <div class="error" id="startError" hidden></div>
+      <div class="hint">Tipp: Ein Image auf <b>EncDetect.exe</b> ziehen startet die Analyse direkt.</div>
+    </div>
+
+    <div class="recent" id="recentBox" hidden>
+      <div class="section-title">Zuletzt analysiert</div>
+      <ul id="recentList"></ul>
+    </div>
+
+    <div class="features">
+      <div class="feature"><span class="dot s-encrypted"></span><b>BitLocker</b><span>Vista, 7–11, To Go · AES-CBC/XTS · Schutzvorrichtungen · <em>Clear Key mit Gegenprüfung</em></span></div>
+      <div class="feature"><span class="dot s-encrypted"></span><b>APFS / FileVault</b><span>FileVault, Volume-Passwort, Hardware-Verschlüsselung · Keybag-Auswertung · Passwort-Hinweis</span></div>
+      <div class="feature"><span class="dot s-encrypted"></span><b>FileVault 2 (CoreStorage)</b><span>OS X 10.7–10.12 · Benutzer · Konvertierungsstatus</span></div>
+      <div class="feature"><span class="dot s-encrypted"></span><b>LUKS1 / LUKS2</b><span>Cipher, Modus, Schlüssellänge, PBKDF2/Argon2, Keyslots, TPM2/FIDO2-Token</span></div>
+      <div class="feature"><span class="dot s-suspected"></span><b>VeraCrypt / TrueCrypt</b><span>Header-Analyse, Entropie + Chi-Quadrat, Systemverschlüsselung (Sektor 62)</span></div>
+      <div class="feature"><span class="dot s-partial"></span><b>Weitere</b><span>FreeBSD GELI, ext4/fscrypt, dm-crypt plain, Bootloader von McAfee, Symantec PGP, Sophos, Check Point, DiskCryptor …</span></div>
+    </div>
+  </section>
+
+  <!-- Fortschritt -->
+  <section id="viewProgress" class="view" hidden>
+    <div class="card progress-card">
+      <div class="spinner"></div>
+      <div class="progress-file" id="progressFile"></div>
+      <div class="progress-msg" id="progressMsg">Wird analysiert …</div>
+      <div class="bar"><div class="bar-fill" id="progressBar"></div></div>
+      <button class="btn ghost" id="cancelBtn" type="button">Abbrechen</button>
+    </div>
+  </section>
+
+  <!-- Ergebnis -->
+  <section id="viewResult" class="view" hidden>
+    <div class="result-actions">
+      <button class="btn ghost" id="newBtn" type="button">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Neues Image
+      </button>
+      <div class="spacer"></div>
+      <button class="btn" data-export="html" type="button">Bericht speichern (HTML)</button>
+      <button class="btn" data-export="txt" type="button">Text</button>
+      <button class="btn" data-export="json" type="button">JSON</button>
+    </div>
+
+    <div class="verdict card" id="verdict"></div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="section-title">Image</div>
+        <dl class="kv" id="imageInfo"></dl>
+      </div>
+      <div class="card">
+        <div class="section-title">Datenträger-Aufteilung</div>
+        <div class="diskmap" id="diskMap"></div>
+        <div class="legend" id="legend"></div>
+        <div id="diskNotes"></div>
+      </div>
+    </div>
+
+    <div id="volumes"></div>
+    <div class="footer-note" id="footerNote"></div>
+  </section>
+</main>
+
+<div class="toast" id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
