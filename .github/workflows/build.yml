@@ -5,6 +5,8 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -32,9 +34,14 @@ jobs:
           name: EncDetect-Windows
           path: dist/*.exe
       - name: Release
+        # Tag-Push oder auf GitHub veröffentlichtes Release: EXE-Dateien anhängen
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         run: |
-          cd dist && zip EncDetect-${GITHUB_REF_NAME}-Windows.zip EncDetect.exe encdetect-cli.exe
-          gh release create "$GITHUB_REF_NAME" EncDetect-${GITHUB_REF_NAME}-Windows.zip --title "EncDetect $GITHUB_REF_NAME" --generate-notes
+          cp README.md dist/
+          cd dist && zip "EncDetect-${TAG}-Windows.zip" EncDetect.exe encdetect-cli.exe README.md
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --title "EncDetect $TAG" --generate-notes
+          gh release upload "$TAG" "EncDetect-${TAG}-Windows.zip" -R "$GITHUB_REPOSITORY" --clobber
